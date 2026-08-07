@@ -1,5 +1,5 @@
 export const config = {
-    runtime: 'edge', // Bật Edge Runtime để tránh lỗi Timeout 10s của Vercel
+    runtime: 'edge', 
 };
 
 export default async function handler(req) {
@@ -16,13 +16,15 @@ export default async function handler(req) {
         const apiKey = process.env.GEMINI_API_KEY;
 
         if (!apiKey) {
-            return new Response(JSON.stringify({ error: 'Missing API Key' }), {
+            return new Response(JSON.stringify({ error: 'Missing API Key on Vercel' }), {
                 status: 500,
                 headers: { 'Content-Type': 'application/json' },
             });
         }
 
-        const model = 'gemini-1.5-flash';
+        // Đã sửa tên model thành bản latest để API của Google nhận diện chính xác
+        const model = 'gemini-1.5-flash-latest';
+        
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
