@@ -6,6 +6,7 @@
     <title>Hệ thống Ôn luyện An ninh Hàng không</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     
     <script>
@@ -716,27 +717,44 @@
         let chatSessionHistory = [];
         let activeEditType = '';
 
-        window.onload = () => {
-            loadStorageData();
+        window.onload = async () => {
+            await loadStorageData();
             renderTable(schedules);
             populateSelects();
             loadHistory();
             checkSession();
         };
 
-        function loadStorageData() {
-            const savedSchedules = localStorage.getItem('sys_schedules');
-            if(savedSchedules) schedules = JSON.parse(savedSchedules);
-            const savedUsers = localStorage.getItem('sys_users');
-            if(savedUsers) users = JSON.parse(savedUsers);
-            const savedDb = localStorage.getItem('sys_coursedb');
-            if(savedDb) courseDb = JSON.parse(savedDb);
+        async function loadStorageData() {
+            try {
+                showToast("Đang đồng bộ dữ liệu hệ thống...", "success");
+                const response = await fetch('/api/db');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.schedules) schedules = data.schedules;
+                    if (data.users) users = data.users;
+                    if (data.courseDb) courseDb = data.courseDb;
+                }
+            } catch (error) {
+                console.error(error);
+                showToast("Mất kết nối máy chủ, đang dùng dữ liệu dự phòng!", "error");
+                const savedSchedules = localStorage.getItem('sys_schedules');
+                if(savedSchedules) schedules = JSON.parse(savedSchedules);
+                const savedUsers = localStorage.getItem('sys_users');
+                if(savedUsers) users = JSON.parse(savedUsers);
+                const savedDb = localStorage.getItem('sys_coursedb');
+                if(savedDb) courseDb = JSON.parse(savedDb);
+            }
         }
 
         function saveStorageData() {
             localStorage.setItem('sys_schedules', JSON.stringify(schedules));
             localStorage.setItem('sys_users', JSON.stringify(users));
             localStorage.setItem('sys_coursedb', JSON.stringify(courseDb));
+            
+            fetch('/api/db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key: 'sys_schedules', value: schedules }) }).catch(e=>console.error(e));
+            fetch('/api/db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key: 'sys_users', value: users }) }).catch(e=>console.error(e));
+            fetch('/api/db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key: 'sys_coursedb', value: courseDb }) }).catch(e=>console.error(e));
         }
 
         function showToast(message, type = 'success') {
@@ -926,14 +944,44 @@
             currentSubjectId = id;
             const subject = schedules.find(s => s.id === id);
             const data = courseDb[id] || {};
+            
             document.getElementById('curriculumList').classList.add('hidden');
             document.getElementById('lessonDetailView').classList.remove('hidden');
             document.getElementById('lessonBadge').innerHTML = `<i data-lucide="book-open" class="w-4 h-4"></i> MÔN ${id}`;
             document.getElementById('lessonTitle').innerText = subject ? subject.name : `Môn học ${id}`;
             
             const contentDisplay = document.getElementById('lessonContentDisplay');
+            
             if (data.lessonContent) {
-                contentDisplay.innerHTML = data.lessonContent.split('\n').map(p => `<p>${p}</p>`).join('');
+                let content = data.lessonContent.trim();
+                
+                if (content.includes('drive.google.com/file/d/')) {
+                    const fileIdMatch = content.match(/[-\w]{25,}/);
+                    if (fileIdMatch) {
+                        const fileId = fileIdMatch[0];
+                        contentDisplay.innerHTML = `
+                            <div class="w-full h-[650px] sm:h-[800px] rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(0,243,255,0.15)] relative bg-white">
+                                <iframe src="https://drive.google.com/file/d/${fileId}/preview" width="100%" height="100%" allow="autoplay" class="absolute inset-0"></iframe>
+                            </div>
+                            <div class="mt-4 text-center text-xs text-gray-500">Tài liệu được trình chiếu trực tiếp từ hệ thống an toàn.</div>
+                        `;
+                    } else {
+                        contentDisplay.innerHTML = `<a href="${content}" target="_blank" class="text-neon-cyan underline font-bold">Nhấn vào đây để xem tài liệu đính kèm</a>`;
+                    }
+                } 
+                else if (content.match(/^https?:\/\/.*\.pdf$/i)) {
+                    contentDisplay.innerHTML = `
+                        <div class="w-full h-[650px] sm:h-[800px] rounded-2xl overflow-hidden border border-white/10 bg-white">
+                            <iframe src="${content}" width="100%" height="100%"></iframe>
+                        </div>
+                    `;
+                }
+                else {
+                    if(!content.includes('<p>')) {
+                        content = content.split('\n').map(p => `<p>${p}</p>`).join('');
+                    }
+                    contentDisplay.innerHTML = content;
+                }
             } else {
                 contentDisplay.innerHTML = `<div class="text-center py-12 text-gray-500"><i data-lucide="file-warning" class="w-12 h-12 mx-auto mb-4 opacity-30"></i> Nội dung giáo trình đang được cập nhật. Bạn có thể yêu cầu Admin bổ sung trong trạm quản trị.</div>`;
             }
@@ -1240,6 +1288,7 @@
         function handleFileUpload(event, targetElementId) {
             const file = event.target.files[0];
             if (!file) return;
+            
             if (file.name.match(/\.(txt)$/i)) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
@@ -1247,9 +1296,39 @@
                     showToast("Đã tải dữ liệu từ tệp văn bản thành công!");
                 };
                 reader.readAsText(file);
-            } else {
-                document.getElementById(targetElementId).value = `[Hệ thống đã nhận diện tệp đính kèm: ${file.name}]\n\n>>> Bấm nút AI để máy chủ phân tích tài liệu này...`;
-                showToast(`Đã đính kèm tệp ${file.name} thành công. Sẵn sàng cho AI phân tích!`);
+            } 
+            else if (file.name.match(/\.(docx)$/i)) {
+                document.getElementById(targetElementId).value = "Đang trích xuất dữ liệu từ file Word, vui lòng đợi...";
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    mammoth.convertToHtml({arrayBuffer: e.target.result})
+                        .then(function(result) {
+                            let html = result.value;
+                            
+                            html = html.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
+                            html = html.replace(/<b>(.*?)<\/b>/gi, '**$1**');
+                            
+                            html = html.replace(/<\/p>/gi, '\n');
+                            html = html.replace(/<br\s*\/?>/gi, '\n');
+                            
+                            let text = html.replace(/<[^>]+>/g, '');
+                            text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
+                            text = text.replace(/\n\s+\n/g, '\n\n').trim();
+
+                            document.getElementById(targetElementId).value = text;
+                            showToast("Trích xuất thành công! Hệ thống đã nhận diện các đáp án bôi đen.");
+                        })
+                        .catch(function(err) {
+                            document.getElementById(targetElementId).value = "";
+                            showToast("Lỗi đọc file Word! Hãy đảm bảo file không bị hỏng.", "error");
+                        });
+                };
+                reader.readAsArrayBuffer(file);
+            } 
+            else {
+                document.getElementById(targetElementId).value = `[Hệ thống đã nhận diện tệp đính kèm: ${file.name}]\n\n>>> Định dạng này chưa hỗ trợ đọc trực tiếp, vui lòng dùng file .txt hoặc .docx!`;
+                showToast(`Định dạng ${file.name} chưa hỗ trợ trích xuất tự động.`, "error");
             }
         }
 
@@ -1396,8 +1475,8 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
-                            <button onclick="toggleUserStatus(${idx})" class="p-1.5 rounded-lg bg-white/5 text-gray-300 hover:text-white transition" title="Bật/Tắt tài khoản"><i data-lucide="${u.active !== false ? 'lock' : 'unlock'}" class="w-3.5 h-3.5"></i></button>
-                            <button onclick="deleteUserEmail(${idx})" class="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition" title="Xóa"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                            <button onclick="toggleUserStatus(${idx})" class="p-1.5 rounded-lg bg-white/5 text-gray-300 hover:text-white transition"><i data-lucide="${u.active !== false ? 'lock' : 'unlock'}" class="w-3.5 h-3.5"></i></button>
+                            <button onclick="deleteUserEmail(${idx})" class="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                         </div>
                     </div>
                 `;
