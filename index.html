@@ -492,11 +492,6 @@
                         <i data-lucide="file-text" class="text-neon-cyan w-6 h-6"></i> Cập Nhật Bài Giảng & Đề Cương
                     </h3>
                     
-                    <div class="mb-4 p-4 bg-neon-purple/10 border border-neon-purple/30 rounded-2xl">
-                        <label class="text-[10px] text-neon-purple uppercase tracking-widest font-bold mb-2 flex items-center gap-1"><i data-lucide="key" class="w-3 h-3"></i> Google Gemini API Key</label>
-                        <input type="password" id="adminApiKey" placeholder="Nhập API Key để dùng tính năng AI..." class="w-full bg-black border border-white/20 rounded-full px-4 py-2 text-white text-xs outline-none focus:border-neon-purple">
-                    </div>
-
                     <div class="mb-4">
                         <label class="text-xs text-gray-400 uppercase tracking-widest font-bold mb-2 block">Chọn Môn</label>
                         <select id="adminSubjectSelect" class="w-full bg-black/80 border border-white/20 rounded-full px-5 py-3 text-white font-bold outline-none focus:border-neon-cyan text-sm cursor-pointer"></select>
@@ -526,8 +521,7 @@
                                 <button onclick="generateWithGemini('outline')" class="text-[10px] bg-neon-purple/20 text-neon-purple hover:bg-neon-purple hover:text-white px-2 py-1 rounded flex items-center gap-1 transition border border-neon-purple/50"><i data-lucide="sparkles" class="w-3 h-3"></i> AI Soạn Đề</button>
                             </div>
                         </div>
-                        <div class="text-[10px] text-gray-500 mb-2 italic">Mẹo: Đặt đáp án đúng trong cặp dấu sao kép <b>**đáp án**</b> để hệ thống tự nhận diện.</div>
-                        <textarea id="adminOutlineText" rows="6" placeholder="Nhập đề cương. Ví dụ:\nCâu 1: Câu hỏi?\nA. Sai\nB. **Đúng**\nC. Sai\nD. Sai" class="w-full bg-black/80 border border-white/20 rounded-2xl p-4 text-sm text-gray-300 outline-none focus:border-neon-cyan resize-y"></textarea>
+                        <textarea id="adminOutlineText" rows="6" placeholder="Nhập đề cương. Bọc đáp án đúng trong cặp dấu **" class="w-full bg-black/80 border border-white/20 rounded-2xl p-4 text-sm text-gray-300 outline-none focus:border-neon-cyan resize-y"></textarea>
                     </div>
                     <button onclick="processContentData()" class="btn-neon w-full py-3 text-sm flex items-center justify-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Lưu & Phân Tích</button>
                 </div>
@@ -819,7 +813,6 @@
         async function handleLogin() {
             const email = document.getElementById('loginEmailInput').value.trim().toLowerCase();
             
-            // 1. Xác thực bảo mật trên Serverless nếu là Admin
             if (email === "manhquangle501@gmail.com") {
                 try {
                     const response = await fetch('/api/admin-login', {
@@ -845,7 +838,6 @@
                 return;
             }
 
-            // 2. Đăng nhập bình thường đối với Học viên
             const user = users.find(u => u.email === email);
             if (user) {
                 if(user.active === false) {
@@ -999,6 +991,48 @@
             lucide.createIcons();
         }
 
+        function handleAnswerSelect(qIndex, selectedOptIndex, correctOptIndex) {
+            const block = document.getElementById(`options_block_${qIndex}`);
+            const radios = block.querySelectorAll(`input[type="radio"]`);
+            radios.forEach(r => r.disabled = true);
+            
+            for(let i = 0; i < radios.length; i++) {
+                const lbl = document.getElementById(`label_${qIndex}_${i}`);
+                lbl.classList.remove('cursor-pointer', 'hover:bg-white/5');
+                if(i === correctOptIndex) {
+                    lbl.classList.remove('bg-black/40', 'border-white/10');
+                    lbl.classList.add('bg-emerald-500/20', 'border-emerald-500/50');
+                } else if (i === selectedOptIndex && selectedOptIndex !== correctOptIndex) {
+                    lbl.classList.remove('bg-black/40', 'border-white/10');
+                    lbl.classList.add('bg-red-500/20', 'border-red-500/50');
+                } else {
+                    lbl.classList.add('opacity-50');
+                }
+            }
+            
+            const expDiv = document.getElementById(`explanation_${qIndex}`);
+            expDiv.classList.remove('hidden');
+            const qData = activeExamQs[qIndex];
+            expDiv.querySelector('.exp-text').innerText = qData.exp || `Đáp án đúng là ${String.fromCharCode(65 + correctOptIndex)}`;
+            
+            if (selectedOptIndex === correctOptIndex) {
+                expDiv.classList.add('bg-emerald-500/10', 'border', 'border-emerald-500/30', 'text-emerald-400');
+            } else {
+                expDiv.classList.add('bg-red-500/10', 'border', 'border-red-500/30', 'text-red-400');
+            }
+        }
+
+        function askAIAboutQuestion(qIndex) {
+            const qData = activeExamQs[qIndex];
+            const chatWidget = document.getElementById('chatWidget');
+            if (chatWidget.classList.contains('hidden-chat')) {
+                toggleChat();
+            }
+            const prompt = `Giải thích chi tiết giúp tôi câu hỏi này:\nCâu hỏi: ${qData.q}\nCác đáp án:\nA. ${qData.opts[0]}\nB. ${qData.opts[1]}\nC. ${qData.opts[2]}\nD. ${qData.opts[3]}\nĐáp án đúng là: ${String.fromCharCode(65 + qData.ans)}. Tại sao?`;
+            document.getElementById('chatInput').value = prompt;
+            sendChatMessage();
+        }
+
         function startExamMode(mode) {
             currentExamMode = mode;
             const data = courseDb[currentSubjectId];
@@ -1047,21 +1081,22 @@
                 let opts = '';
                 q.opts.forEach((o, oi) => {
                     opts += `
-                        <label class="flex items-start gap-4 p-5 bg-black/40 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/5 hover:border-neon-cyan/50 transition text-sm font-medium">
-                            <input type="radio" name="exam_${i}" value="${oi}" class="w-5 h-5 mt-0.5 accent-neon-cyan shrink-0">
+                        <label id="label_${i}_${oi}" class="flex items-start gap-4 p-5 bg-black/40 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/5 transition text-sm font-medium">
+                            <input type="radio" name="exam_${i}" value="${oi}" onchange="handleAnswerSelect(${i}, ${oi}, ${q.ans})" class="w-5 h-5 mt-0.5 accent-neon-cyan shrink-0">
                             <span class="leading-relaxed text-gray-300"><span class="text-white font-bold mr-2">${String.fromCharCode(65+oi)}.</span>${o}</span>
                         </label>
                     `;
                 });
                 list.innerHTML += `
-                    <div class="p-8 rounded-3xl bg-black/60 border border-white/5 shadow-lg">
+                    <div class="p-8 rounded-3xl bg-black/60 border border-white/5 shadow-lg" id="question_block_${i}">
                         <h4 class="font-bold text-white text-lg mb-6 leading-relaxed flex items-start gap-3">
                             <span class="text-neon-cyan bg-neon-cyan/10 px-3 py-1 rounded-lg shrink-0">Câu ${i+1}</span>
                             <span>${q.q}</span>
                         </h4>
-                        <div class="grid sm:grid-cols-2 gap-4">${opts}</div>
-                        <div id="explanation_${i}" class="hidden mt-6 p-4 rounded-xl bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan text-sm">
-                            <b>Phân tích:</b> <span class="exp-text"></span>
+                        <div class="grid sm:grid-cols-2 gap-4" id="options_block_${i}">${opts}</div>
+                        <div id="explanation_${i}" class="hidden mt-6 p-5 rounded-xl text-sm flex flex-col gap-4">
+                            <div class="leading-relaxed"><b>Phân tích:</b> <span class="exp-text"></span></div>
+                            <button onclick="askAIAboutQuestion(${i})" class="btn-neon w-fit px-5 py-2.5 text-xs flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(188,19,254,0.3)]"><i data-lucide="sparkles" class="w-4 h-4"></i> AI Giải thích chi tiết</button>
                         </div>
                     </div>
                 `;
@@ -1079,14 +1114,17 @@
                 const isCorrect = sel && parseInt(sel.value) === q.ans;
                 if(isCorrect) corrects++;
                 
-                const expDiv = document.getElementById(`explanation_${i}`);
-                if (expDiv) {
-                    expDiv.classList.remove('hidden');
-                    expDiv.querySelector('.exp-text').innerText = q.exp || `Đáp án đúng là ${String.fromCharCode(65+q.ans)}`;
-                    if (!isCorrect) {
-                        expDiv.classList.replace('bg-neon-cyan/10', 'bg-red-500/10');
-                        expDiv.classList.replace('border-neon-cyan/30', 'border-red-500/30');
-                        expDiv.classList.replace('text-neon-cyan', 'text-red-400');
+                if (!sel) {
+                    const expDiv = document.getElementById(`explanation_${i}`);
+                    if (expDiv && expDiv.classList.contains('hidden')) {
+                        expDiv.classList.remove('hidden');
+                        expDiv.querySelector('.exp-text').innerText = q.exp || `Đáp án đúng là ${String.fromCharCode(65+q.ans)}`;
+                        expDiv.classList.add('bg-red-500/10', 'border', 'border-red-500/30', 'text-red-400');
+                        const lbl = document.getElementById(`label_${i}_${q.ans}`);
+                        if (lbl) {
+                            lbl.classList.remove('bg-black/40', 'border-white/10');
+                            lbl.classList.add('bg-emerald-500/20', 'border-emerald-500/50');
+                        }
                     }
                 }
             });
@@ -1210,7 +1248,7 @@
                 };
                 reader.readAsText(file);
             } else {
-                document.getElementById(targetElementId).value = `[Hệ thống đã nhận diện tệp đính kèm: ${file.name}]\n\n>>> Bấm nút "AI Viết" hoặc "AI Soạn Đề" để máy chủ phân tích tài liệu này...`;
+                document.getElementById(targetElementId).value = `[Hệ thống đã nhận diện tệp đính kèm: ${file.name}]\n\n>>> Bấm nút AI để máy chủ phân tích tài liệu này...`;
                 showToast(`Đã đính kèm tệp ${file.name} thành công. Sẵn sàng cho AI phân tích!`);
             }
         }
@@ -1228,15 +1266,7 @@
             if (type === 'lesson') {
                 prompt = `Viết một giáo trình chi tiết, chuyên nghiệp (khoảng 500 chữ) cho chuyên đề: "${subject.name}" dành cho lực lượng Công an An ninh hàng không cửa khẩu Nội Bài.`;
             } else {
-                prompt = `Soạn đề cương ôn tập cho chuyên đề "${subject.name}". Yêu cầu:
-                1. Ghi 3 ý chính tóm tắt bằng các gạch đầu dòng (bắt đầu bằng dấu •).
-                2. Bắt buộc tạo 5 câu hỏi trắc nghiệm theo định dạng sau (đáp án đúng phải được bọc trong cặp dấu **):
-                Câu [số]: [Nội dung câu hỏi]
-                A. [Đáp án]
-                B. [Đáp án]
-                C. [Đáp án]
-                D. [Đáp án]
-                Phân tích: [Giải thích vì sao đúng]`;
+                prompt = `Soạn đề cương ôn tập cho chuyên đề "${subject.name}". Yêu cầu:\n1. Ghi 3 ý chính tóm tắt bằng các gạch đầu dòng.\n2. Bắt buộc tạo 5 câu hỏi trắc nghiệm theo định dạng sau (đáp án đúng phải được bọc trong cặp dấu **):\nCâu [số]: [Nội dung câu hỏi]\nA. [Đáp án]\nB. [Đáp án]\nC. [Đáp án]\nD. [Đáp án]\nPhân tích: [Giải thích vì sao đúng]`;
             }
 
             try {
@@ -1246,6 +1276,13 @@
                     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                 });
                 const result = await response.json();
+                
+                if (result.error) {
+                    el.value = `Lỗi từ AI: ${result.error}`;
+                    showToast("Có lỗi từ AI, vui lòng kiểm tra lại.", "error");
+                    return;
+                }
+
                 if (result.candidates && result.candidates.length > 0) {
                     el.value = result.candidates[0].content.parts[0].text;
                     showToast("AI đã tạo xong nội dung!");
@@ -1255,7 +1292,7 @@
                 }
             } catch (err) {
                 el.value = "";
-                showToast("Lỗi kết nối AI. Kiểm tra lại API Key trên máy chủ.", "error");
+                showToast("Lỗi kết nối AI. Vui lòng kiểm tra lại.", "error");
             }
         }
 
@@ -1525,6 +1562,13 @@
                     })
                 });
                 const result = await response.json();
+                
+                if (result.error) {
+                    updateChatMessage(loadingId, `<span class='text-red-400'>Lỗi AI: ${result.error}</span>`);
+                    chatSessionHistory.pop(); 
+                    return;
+                }
+
                 if (result.candidates && result.candidates.length > 0) {
                     const reply = result.candidates[0].content.parts[0].text;
                     chatSessionHistory.push({ role: "model", parts: [{ text: reply }] });
@@ -1561,7 +1605,6 @@
             }
         }
 
-        // CHẶN F12 VÀ CHUỘT PHẢI
         document.addEventListener('contextmenu', event => event.preventDefault());
         document.onkeydown = function (e) {
             if (e.keyCode == 123 || 
