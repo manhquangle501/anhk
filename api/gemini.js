@@ -22,8 +22,8 @@ export default async function handler(req) {
             });
         }
 
-        // Đã sửa tên model thành bản latest để API của Google nhận diện chính xác
-        const model = 'gemini-1.5-flash-latest';
+        // Đã cập nhật sang thế hệ model 3.5 mới nhất của Google để tránh lỗi 404 Deprecated
+        const model = 'gemini-3.5-flash';
         
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
             method: 'POST',
