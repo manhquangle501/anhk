@@ -955,13 +955,14 @@
             if (data.lessonContent) {
                 let content = data.lessonContent.trim();
                 
-                if (content.includes('drive.google.com/file/d/')) {
+                // Nhận diện linh hoạt mọi link Google (Drive, Docs, Sheets)
+                if (content.includes('google.com') && (content.includes('/d/') || content.includes('/file/d/'))) {
                     const fileIdMatch = content.match(/[-\w]{25,}/);
                     if (fileIdMatch) {
                         const fileId = fileIdMatch[0];
                         contentDisplay.innerHTML = `
                             <div class="w-full h-[650px] sm:h-[800px] rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(0,243,255,0.15)] relative bg-white">
-                                <iframe src="https://drive.google.com/file/d/${fileId}/preview" width="100%" height="100%" allow="autoplay" class="absolute inset-0"></iframe>
+                                <iframe src="https://docs.google.com/gview?url=https://drive.google.com/uc?id=${fileId}&embedded=true" width="100%" height="100%" class="absolute inset-0" frameborder="0"></iframe>
                             </div>
                             <div class="mt-4 text-center text-xs text-gray-500">Tài liệu được trình chiếu trực tiếp từ hệ thống an toàn.</div>
                         `;
@@ -1525,21 +1526,32 @@
                 let line = lines[i].trim();
                 if(!line) continue;
                 
+                // 1. Phân loại nội dung kiến thức
                 if(line.startsWith('•') || line.startsWith('-')) {
                     keyPointsArr.push(line);
                 } 
-                else if (line.match(/^Câu\s+\d+:/i)) {
+                // 2. Nhận diện linh hoạt Tiêu đề câu hỏi (Câu 1., Câu 1:, Câu 1 -, Câu 1)
+                else if (line.match(/^Câu\s+\d+[\.\:\-\)]?/i)) {
                     if(currentQ && currentQ.opts.length > 0) questionsArr.push(currentQ);
                     currentQ = { q: line, opts: [], ans: 0, exp: "Đáp án chuẩn theo đề cương." };
                 }
-                else if (currentQ && line.match(/^[A-D]\./i)) {
-                    let isCorrect = line.includes('**');
-                    let cleanOpt = line.replace(/^[A-D]\.\s*/i, '').replace(/\*\*/g, '').trim();
+                // 3. Nhận diện linh hoạt Đáp án (A., b:, C), d/, A-)
+                else if (currentQ && line.replace(/\*\*/g, '').match(/^[a-d][\.\:\)\/\-]/i)) {
+                    // Kiểm tra xem dòng đáp án có chứa dấu in đậm (**) không
+                    const isCorrect = line.includes('**');
+                    
+                    // Tẩy sạch dấu ** và các ký tự A., B:, C) để lấy phần nội dung chuẩn
+                    let cleanOpt = line.replace(/\*\*/g, '').replace(/^[a-d][\.\:\)\/\-]\s*/i, '').trim();
+                    
                     currentQ.opts.push(cleanOpt);
-                    if (isCorrect) currentQ.ans = currentQ.opts.length - 1;
+                    
+                    if (isCorrect) {
+                        currentQ.ans = currentQ.opts.length - 1;
+                    }
                 }
+                // 4. Nhận diện phần Giải thích (Phân tích:)
                 else if (currentQ && line.toLowerCase().startsWith('phân tích:')) {
-                    currentQ.exp = line.replace(/^phân tích:\s*/i, '').trim();
+                    currentQ.exp = line.replace(/^phân tích:\s*/i, '').replace(/\*\*/g, '').trim();
                 }
             }
             if(currentQ && currentQ.opts.length > 0) questionsArr.push(currentQ);
