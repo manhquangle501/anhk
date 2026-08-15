@@ -460,6 +460,22 @@
         </div>
     </div>
 
+    <!-- MODAL ĐĂNG NHẬP (ĐÃ KHÔI PHỤC) -->
+    <div id="loginModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4">
+        <div class="neon-card p-6 sm:p-12 max-w-sm w-full relative border-neon-cyan/50 shadow-[0_0_50px_rgba(0,243,255,0.2)] text-center">
+            <button onclick="closeLoginModal()" class="absolute top-4 right-4 sm:top-6 sm:right-6 text-gray-500 hover:text-white transition bg-white/5 rounded-full p-2">
+                <i data-lucide="x" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+            </button>
+            <div class="w-16 h-16 sm:w-24 sm:h-24 bg-neon-cyan/10 border-2 border-neon-cyan/50 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-8 text-neon-cyan shadow-[0_0_30px_rgba(0,243,255,0.3)]">
+                <i data-lucide="mail" class="w-8 h-8 sm:w-12 sm:h-12"></i>
+            </div>
+            <h3 class="text-xl sm:text-3xl font-black uppercase tracking-tight mb-2 text-white">Đăng Nhập</h3>
+            <p class="text-xs sm:text-sm text-gray-400 font-medium mb-6 sm:mb-8">Nhập email của bạn để vào hệ thống</p>
+            <input type="email" id="loginEmailInput" autocomplete="off" placeholder="Nhập email..." class="w-full bg-black border border-white/20 rounded-full px-5 py-3 text-center font-bold text-sm sm:text-lg text-white outline-none focus:border-neon-cyan mb-6 sm:mb-8 shadow-inner" onkeypress="if(event.key === 'Enter') handleLogin()">
+            <button onclick="handleLogin()" class="btn-neon w-full py-3 sm:py-4 text-sm sm:text-lg">Xác Nhận Đăng Nhập</button>
+        </div>
+    </div>
+
     <!-- CHAT & SUPPORT -->
     <div class="fixed bottom-6 left-6 z-50 flex flex-col items-start gap-3">
         <div id="techSupportPopup" class="hidden flex-col gap-2 bg-black/95 backdrop-blur-xl border border-neon-cyan/50 rounded-2xl p-5 shadow-[0_0_30px_rgba(0,243,255,0.4)] w-72 transform origin-bottom-left transition-all">
@@ -482,7 +498,7 @@
         </div>
     </div>
 
-    <!-- SCRIPT CHÍNH -->
+    <!-- SCRIPT CHÍNH (ĐÃ SỬA LỖI F5 MẤT DỮ LIỆU VÀ LƯU NHÁP) -->
     <script>
         lucide.createIcons();
         
@@ -510,7 +526,8 @@
             try {
                 showToast("Đang đồng bộ dữ liệu Cloud...", "success");
                 const response = await fetch('/api/db');
-                if (!response.ok) throw new Error("Lỗi API Cloud");
+                
+                if (!response.ok) throw new Error("API Cloud không khả dụng (Lỗi " + response.status + ")");
                 
                 const data = await response.json();
                 if (data.schedules && data.schedules.length > 0) schedules = data.schedules;
@@ -518,7 +535,7 @@
                 if (data.courseDb && Object.keys(data.courseDb).length > 0) courseDb = data.courseDb;
                 
             } catch (error) {
-                console.warn("Lỗi đồng bộ, dùng Local:", error);
+                console.warn("Đồng bộ Cloud thất bại, chuyển sang Dữ liệu dự phòng Local:", error);
                 showToast("Đang dùng dữ liệu dự phòng thiết bị!", "error");
                 
                 const savedSchedules = localStorage.getItem('sys_schedules');
@@ -635,7 +652,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function openLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); }
+        function openLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); document.getElementById('loginEmailInput').focus(); }
         function closeLoginModal() { document.getElementById('loginModal').classList.add('hidden'); }
         
         async function handleLogin() {
@@ -717,7 +734,7 @@
         function renderTable(data) {
             const tbody = document.getElementById('scheduleTableBody'); tbody.innerHTML = '';
             if(data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="py-10 text-center text-gray-500 italic">Chưa có môn học nào. Vui lòng đăng nhập Admin để thêm.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="py-10 text-center text-gray-500 italic">Chưa có môn học nào. Vui lòng đăng nhập Admin để thêm môn học.</td></tr>';
                 return;
             }
             data.forEach(item => {
