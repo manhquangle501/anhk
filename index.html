@@ -482,7 +482,7 @@
         </div>
     </div>
 
-    <!-- SCRIPT CHÍNH (ĐÃ SỬA LỖI F5 MẤT DỮ LIỆU VÀ LƯU NHÁP) -->
+    <!-- SCRIPT CHÍNH -->
     <script>
         lucide.createIcons();
         
@@ -510,9 +510,7 @@
             try {
                 showToast("Đang đồng bộ dữ liệu Cloud...", "success");
                 const response = await fetch('/api/db');
-                
-                // [QUAN TRỌNG] Bọc lớp giáp bảo vệ: Bắt buộc văng lỗi nếu API sập để nhảy xuống catch
-                if (!response.ok) throw new Error("API Cloud không khả dụng (Lỗi " + response.status + ")");
+                if (!response.ok) throw new Error("Lỗi API Cloud");
                 
                 const data = await response.json();
                 if (data.schedules && data.schedules.length > 0) schedules = data.schedules;
@@ -520,7 +518,7 @@
                 if (data.courseDb && Object.keys(data.courseDb).length > 0) courseDb = data.courseDb;
                 
             } catch (error) {
-                console.warn("Đồng bộ Cloud thất bại, chuyển sang Dữ liệu dự phòng Local:", error);
+                console.warn("Lỗi đồng bộ, dùng Local:", error);
                 showToast("Đang dùng dữ liệu dự phòng thiết bị!", "error");
                 
                 const savedSchedules = localStorage.getItem('sys_schedules');
@@ -531,7 +529,6 @@
                 if(savedDb) courseDb = JSON.parse(savedDb) || {};
             }
             
-            // Đảm bảo không bao giờ mất quyền Admin tối cao dù máy trắng trơn
             if(!users || !Array.isArray(users)) users = [];
             if(users.length === 0) users.push({ email: "manhquangle501@gmail.com", name: "Lê Quang Mạnh", role: "admin", active: true, loginCount: 0, lastLogin: null, history: [], sessionToken: null });
 
@@ -720,7 +717,7 @@
         function renderTable(data) {
             const tbody = document.getElementById('scheduleTableBody'); tbody.innerHTML = '';
             if(data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="py-10 text-center text-gray-500 italic">Chưa có môn học nào. Vui lòng đăng nhập Admin để thêm môn học.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="py-10 text-center text-gray-500 italic">Chưa có môn học nào. Vui lòng đăng nhập Admin để thêm.</td></tr>';
                 return;
             }
             data.forEach(item => {
