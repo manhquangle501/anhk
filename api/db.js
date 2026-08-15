@@ -1,58 +1,61 @@
-export const config = {
-    runtime: 'edge', 
-};
+import { kv } from '@vercel/kv';
 
-export default async function handler(req) {
-    // Vercel sẽ tự đọc chìa khóa từ máy chủ thông qua process.env
-    const KV_REST_API_URL = process.env.KV_REST_API_URL;
-    const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
-
-    if (!KV_REST_API_URL || !KV_REST_API_TOKEN) {
-        return new Response(JSON.stringify({ error: 'Chưa kết nối được Database' }), { status: 500 });
-    }
-
-    // 1. Xử lý lấy dữ liệu từ Database về Web (GET)
+export default async function handler(req, res) {
     if (req.method === 'GET') {
         try {
-            const fetchKV = async (key) => {
-                const res = await fetch(`${KV_REST_API_URL}/get/${key}`, {
-                    headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` }
-                });
-                const json = await res.json();
-                return json.result ? JSON.parse(json.result) : null;
-            };
-
-            const [schedules, users, courseDb] = await Promise.all([
-                fetchKV('sys_schedules'),
-                fetchKV('sys_users'),
-                fetchKV('sys_coursedb')
-            ]);
-
-            return new Response(JSON.stringify({ schedules, users, courseDb }), { status: 200, headers: { 'Content-Type': 'application/json' }});
-        } catch (error) {
-            return new Response(JSON.stringify({ error: 'Lỗi đọc Database' }), { status: 500 });
+            const schedules = await kv.get('sys_schedules') || [];
+            const users = await kv.get('sys_users') || [];
+            const courseDb = await kv.get('sys_coursedb') || {};
+            return res.status(200).json({ schedules, users, courseDb });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
         }
     }
 
-    // 2. Xử lý lưu dữ liệu từ Web lên Database (POST)
     if (req.method === 'POST') {
+        const payload = req.body;
+
         try {
-            const body = await req.json();
-            const { key, value } = body;
-            
-            await fetch(`${KV_REST_API_URL}/set/${key}`, {
-                method: 'POST',
-                headers: { 
-                    Authorization: `Bearer ${KV_REST_API_TOKEN}`,
-                },
-                body: JSON.stringify(value)
-            });
-            
-            return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' }});
-        } catch (error) {
-            return new Response(JSON.stringify({ error: 'Lỗi ghi Database' }), { status: 500 });
+            // [MỚI] 1. Action: Lưu điểm thi cá nhân rẽ nhánh (Chống xung đột)
+            if (payload.action === 'UPDATE_USER_HISTORY') {
+                let users = await kv.get('sys_users') || [];
+                let userIndex = users.findIndex(u => u.email === payload.email);
+                
+                if (userIndex > -1) {
+                    if (!users[userIndex].history) users[userIndex].history = [];
+                    users[userIndex].history.push(payload.record);
+                    await kv.set('sys_users', users);
+                    return res.status(200).json({ success: true, message: "Lưu điểm cá nhân thành công!" });
+                }
+                return res.status(404).json({ success: false, message: "Không tìm thấy User" });
+            }
+
+            // [MỚI] 2. Action: Lưu phiên đăng nhập & Thời gian rẽ nhánh (Chống xung đột)
+            if (payload.action === 'UPDATE_LOGIN') {
+                let users = await kv.get('sys_users') || [];
+                let userIndex = users.findIndex(u => u.email === payload.email);
+                
+                if (userIndex > -1) {
+                    users[userIndex].loginCount = (users[userIndex].loginCount || 0) + 1;
+                    users[userIndex].lastLogin = payload.lastLogin;
+                    users[userIndex].sessionToken = payload.sessionToken;
+                    await kv.set('sys_users', users);
+                    return res.status(200).json({ success: true, message: "Cập nhật đăng nhập thành công!" });
+                }
+                return res.status(404).json({ success: false, message: "Không tìm thấy User" });
+            }
+
+            // 3. Cơ chế mặc định: Lưu đè cả mảng (Dành cho Admin khi sửa Bài giảng / Môn học)
+            if (payload.key && payload.value) {
+                await kv.set(payload.key, payload.value);
+                return res.status(200).json({ success: true });
+            }
+
+            return res.status(400).json({ success: false, message: 'Sai định dạng payload' });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message });
         }
     }
-
-    return new Response('Method not allowed', { status: 405 });
+    
+    return res.status(405).json({ message: 'Method Not Allowed' });
 }
