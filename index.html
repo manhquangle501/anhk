@@ -482,19 +482,17 @@
         </div>
     </div>
 
-    <!-- SCRIPT CHÍNH CLOUD-FIRST & BẢN NHÁP -->
+    <!-- SCRIPT CHÍNH (ĐÃ SỬA LỖI F5 MẤT DỮ LIỆU VÀ LƯU NHÁP) -->
     <script>
         lucide.createIcons();
         
         let schedules = [];
         let courseDb = {};
-        let users = [
-            { email: "manhquangle501@gmail.com", name: "Lê Quang Mạnh", role: "admin", active: true, loginCount: 0, lastLogin: null, history: [], sessionToken: null }
-        ];
+        let users = [];
         
         let currentUser = null;
         let timerInt = null;
-        let currentExamTime = 0; // [MỚI] Biến toàn cục lưu giờ
+        let currentExamTime = 0;
         let activeExamQs = [];
         let currentSubjectId = null;
         let currentExamMode = 'mock';
@@ -512,22 +510,31 @@
             try {
                 showToast("Đang đồng bộ dữ liệu Cloud...", "success");
                 const response = await fetch('/api/db');
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.schedules && data.schedules.length > 0) schedules = data.schedules;
-                    if (data.users && data.users.length > 0) users = data.users;
-                    if (data.courseDb) courseDb = data.courseDb;
-                }
+                
+                // [QUAN TRỌNG] Bọc lớp giáp bảo vệ: Bắt buộc văng lỗi nếu API sập để nhảy xuống catch
+                if (!response.ok) throw new Error("API Cloud không khả dụng (Lỗi " + response.status + ")");
+                
+                const data = await response.json();
+                if (data.schedules && data.schedules.length > 0) schedules = data.schedules;
+                if (data.users && data.users.length > 0) users = data.users;
+                if (data.courseDb && Object.keys(data.courseDb).length > 0) courseDb = data.courseDb;
+                
             } catch (error) {
-                console.error(error);
-                showToast("Dùng dữ liệu dự phòng thiết bị!", "error");
+                console.warn("Đồng bộ Cloud thất bại, chuyển sang Dữ liệu dự phòng Local:", error);
+                showToast("Đang dùng dữ liệu dự phòng thiết bị!", "error");
+                
                 const savedSchedules = localStorage.getItem('sys_schedules');
-                if(savedSchedules) schedules = JSON.parse(savedSchedules);
+                if(savedSchedules) schedules = JSON.parse(savedSchedules) || [];
                 const savedUsers = localStorage.getItem('sys_users');
-                if(savedUsers) users = JSON.parse(savedUsers);
+                if(savedUsers) users = JSON.parse(savedUsers) || [];
                 const savedDb = localStorage.getItem('sys_coursedb');
-                if(savedDb) courseDb = JSON.parse(savedDb);
+                if(savedDb) courseDb = JSON.parse(savedDb) || {};
             }
+            
+            // Đảm bảo không bao giờ mất quyền Admin tối cao dù máy trắng trơn
+            if(!users || !Array.isArray(users)) users = [];
+            if(users.length === 0) users.push({ email: "manhquangle501@gmail.com", name: "Lê Quang Mạnh", role: "admin", active: true, loginCount: 0, lastLogin: null, history: [], sessionToken: null });
+
             users.forEach(u => {
                 if(!u.history) u.history = [];
                 if(!u.loginCount) u.loginCount = 0;
@@ -659,7 +666,6 @@
                 const token = "SS_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
                 const timeNow = new Date().toLocaleString('vi-VN');
 
-                // Update Local
                 users[userIndex].loginCount = (users[userIndex].loginCount || 0) + 1;
                 users[userIndex].lastLogin = timeNow;
                 users[userIndex].sessionToken = token;
@@ -667,7 +673,6 @@
                 localStorage.setItem('sys_auth', JSON.stringify(currentUser));
                 updateUIAuth(); closeLoginModal();
 
-                // [MỚI] Bắn API Chống Xung Đột
                 fetch('/api/db', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'UPDATE_LOGIN', email: email, lastLogin: timeNow, sessionToken: token })
@@ -790,7 +795,6 @@
             lucide.createIcons();
         }
 
-        // [MỚI] Hàm lưu nháp gọi khi tick chọn đáp án hoặc nhịp đồng hồ
         function saveDraft() {
             if(!currentUser) return;
             const draft = { activeExamQs, timeRemaining: currentExamTime };
@@ -815,9 +819,7 @@
             if (selectedOptIndex === correctOptIndex) { expDiv.classList.add('bg-emerald-500/10', 'border', 'border-emerald-500/30', 'text-emerald-400'); } 
             else { expDiv.classList.add('bg-red-500/10', 'border', 'border-red-500/30', 'text-red-400'); }
 
-            // [MỚI] Ghi nhớ lựa chọn và lưu nháp
-            activeExamQs[qIndex].selected = selectedOptIndex;
-            saveDraft();
+            activeExamQs[qIndex].selected = selectedOptIndex; saveDraft();
         }
 
         function askAIAboutQuestion(qIndex) {
@@ -839,13 +841,11 @@
             const subjObj = schedules.find(s => s.id == currentSubjectId); const subjName = subjObj ? subjObj.name : 'Môn học';
             const titleEl = document.getElementById('examTitle'); const subtitleEl = document.getElementById('examSubtitle'); const timerContainer = document.getElementById('timerContainer');
 
-            // [MỚI] Phục hồi bản nháp
             let savedDraft = localStorage.getItem(`sys_draft_${currentUser.email}_${currentSubjectId}_${mode}`);
             let useDraft = false;
             if (savedDraft) {
-                if(confirm("Hệ thống phát hiện bạn có một bài đang làm dở chưa nộp. Bạn có muốn tiếp tục làm không?")) {
-                    useDraft = true;
-                } else { localStorage.removeItem(`sys_draft_${currentUser.email}_${currentSubjectId}_${mode}`); }
+                if(confirm("Hệ thống phát hiện bạn có một bài đang làm dở chưa nộp. Bạn có muốn tiếp tục làm không?")) { useDraft = true; } 
+                else { localStorage.removeItem(`sys_draft_${currentUser.email}_${currentSubjectId}_${mode}`); }
             }
 
             if (mode === 'practice') {
@@ -858,13 +858,10 @@
                 
                 if (useDraft) {
                     let draftData = JSON.parse(savedDraft);
-                    activeExamQs = draftData.activeExamQs;
-                    currentExamTime = draftData.timeRemaining;
+                    activeExamQs = draftData.activeExamQs; currentExamTime = draftData.timeRemaining;
                 } else {
                     let pool = [...data.questions]; while(pool.length > 0 && pool.length < 20) { pool = pool.concat(data.questions); }
                     activeExamQs = pool.sort(() => 0.5 - Math.random()).slice(0, 20).map(q => ({...q, opts: [...q.opts]}));
-                    
-                    // Trộn đáp án ngẫu nhiên
                     activeExamQs.forEach(q => {
                         let optionsData = q.opts.map((optText, index) => ({ text: optText, isCorrect: index === q.ans }));
                         optionsData.sort(() => 0.5 - Math.random());
@@ -876,7 +873,6 @@
                 subtitleEl.innerHTML = `<i data-lucide="check-square" class="w-4 h-4"></i> 20 Câu ngẫu nhiên • 20 Phút • 100 Điểm`;
 
                 if(timerInt) clearInterval(timerInt);
-                // Render time ngay
                 const m = Math.floor(currentExamTime/60).toString().padStart(2,'0'); const s = (currentExamTime%60).toString().padStart(2,'0');
                 document.getElementById('examTimer').innerText = `${m}:${s}`;
 
@@ -884,7 +880,7 @@
                     currentExamTime--;
                     const mm = Math.floor(currentExamTime/60).toString().padStart(2,'0'); const ss = (currentExamTime%60).toString().padStart(2,'0');
                     document.getElementById('examTimer').innerText = `${mm}:${ss}`;
-                    if(currentExamTime % 5 === 0) saveDraft(); // Lưu nháp giờ mỗi 5 giây
+                    if(currentExamTime % 5 === 0) saveDraft();
                     if(currentExamTime <= 0) { clearInterval(timerInt); submitSubjectExam(); }
                 }, 1000);
             }
@@ -893,7 +889,6 @@
             activeExamQs.forEach((q, i) => {
                 let opts = '';
                 q.opts.forEach((o, oi) => {
-                    // Cài cắm Disabled/Checked nếu load từ Bản nháp
                     let isChecked = (q.selected === oi) ? "checked" : "";
                     let isDisabled = (q.selected !== undefined) ? "disabled" : "";
                     opts += `
@@ -915,7 +910,6 @@
                     </div>`;
             });
 
-            // [MỚI] Quét lại để bôi màu câu trả lời cũ từ bản nháp
             activeExamQs.forEach((q, i) => {
                 if(q.selected !== undefined) {
                     for(let oi = 0; oi < q.opts.length; oi++) {
@@ -972,9 +966,7 @@
                 resultBtns.innerHTML = `<button onclick="closeResultPanel()" class="btn-outline px-6 py-3 sm:px-10 sm:py-4 font-bold text-xs sm:text-lg">Về Đề Cương</button><button onclick="startExamMode('mock')" class="btn-neon px-6 py-3 sm:px-10 sm:py-4 font-bold text-xs sm:text-lg">Thi Lại Lần Nữa</button>`;
             }
             
-            // Xóa bản nháp sau khi nộp
             localStorage.removeItem(`sys_draft_${currentUser.email}_${currentSubjectId}_${currentExamMode}`);
-            
             saveExamResult(score, currentExamMode);
             lucide.createIcons(); document.getElementById('examResultPanel').classList.remove('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -988,12 +980,10 @@
             
             const userIndex = users.findIndex(u => u.email === currentUser.email);
             if(userIndex > -1) {
-                // Lưu Local
                 if(!users[userIndex].history) users[userIndex].history = [];
                 users[userIndex].history.push(record); currentUser = users[userIndex]; 
                 localStorage.setItem('sys_auth', JSON.stringify(currentUser)); 
                 
-                // [MỚI] Gọi API đẩy lịch sử chống xung đột
                 fetch('/api/db', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'UPDATE_USER_HISTORY', email: currentUser.email, record: record })

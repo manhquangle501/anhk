@@ -16,7 +16,7 @@ export default async function handler(req, res) {
         const payload = req.body;
 
         try {
-            // [MỚI] 1. Action: Lưu điểm thi cá nhân rẽ nhánh (Chống xung đột)
+            // [MỚI] 1. Cập nhật lịch sử làm bài thi (Chống xung đột)
             if (payload.action === 'UPDATE_USER_HISTORY') {
                 let users = await kv.get('sys_users') || [];
                 let userIndex = users.findIndex(u => u.email === payload.email);
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
                 return res.status(404).json({ success: false, message: "Không tìm thấy User" });
             }
 
-            // [MỚI] 2. Action: Lưu phiên đăng nhập & Thời gian rẽ nhánh (Chống xung đột)
+            // [MỚI] 2. Cập nhật lịch sử đăng nhập, token chống nhiều thiết bị
             if (payload.action === 'UPDATE_LOGIN') {
                 let users = await kv.get('sys_users') || [];
                 let userIndex = users.findIndex(u => u.email === payload.email);
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
                 return res.status(404).json({ success: false, message: "Không tìm thấy User" });
             }
 
-            // 3. Cơ chế mặc định: Lưu đè cả mảng (Dành cho Admin khi sửa Bài giảng / Môn học)
+            // 3. Cơ chế mặc định: Lưu đè mảng khi Admin sửa chữa Bài Giảng / Danh sách
             if (payload.key && payload.value) {
                 await kv.set(payload.key, payload.value);
                 return res.status(200).json({ success: true });
