@@ -460,7 +460,7 @@
         </div>
     </div>
 
-    <!-- MODAL ĐĂNG NHẬP (ĐÃ KHÔI PHỤC) -->
+    <!-- MODAL ĐĂNG NHẬP -->
     <div id="loginModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4">
         <div class="neon-card p-6 sm:p-12 max-w-sm w-full relative border-neon-cyan/50 shadow-[0_0_50px_rgba(0,243,255,0.2)] text-center">
             <button onclick="closeLoginModal()" class="absolute top-4 right-4 sm:top-6 sm:right-6 text-gray-500 hover:text-white transition bg-white/5 rounded-full p-2">
@@ -498,7 +498,7 @@
         </div>
     </div>
 
-    <!-- SCRIPT CHÍNH (ĐÃ SỬA LỖI F5 MẤT DỮ LIỆU VÀ LƯU NHÁP) -->
+    <!-- SCRIPT CHÍNH -->
     <script>
         lucide.createIcons();
         
@@ -546,6 +546,7 @@
                 if(savedDb) courseDb = JSON.parse(savedDb) || {};
             }
             
+            // Khởi tạo Admin gốc nếu database trống
             if(!users || !Array.isArray(users)) users = [];
             if(users.length === 0) users.push({ email: "manhquangle501@gmail.com", name: "Lê Quang Mạnh", role: "admin", active: true, loginCount: 0, lastLogin: null, history: [], sessionToken: null });
 
@@ -557,13 +558,28 @@
         }
 
         function saveStorageData() {
+            // Backup thiết bị
             localStorage.setItem('sys_schedules', JSON.stringify(schedules));
             localStorage.setItem('sys_users', JSON.stringify(users));
             localStorage.setItem('sys_coursedb', JSON.stringify(courseDb));
             
-            fetch('/api/db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key: 'sys_schedules', value: schedules }) }).catch(e=>console.error(e));
-            fetch('/api/db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key: 'sys_users', value: users }) }).catch(e=>console.error(e));
-            fetch('/api/db', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key: 'sys_coursedb', value: courseDb }) }).catch(e=>console.error(e));
+            // [MỚI] Đồng bộ 1 chuyến xe lên Cloud
+            fetch('/api/db', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    action: 'SAVE_ALL',
+                    schedules: schedules,
+                    users: users,
+                    courseDb: courseDb
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(!data.success) console.warn("Lỗi lưu Cloud:", data.message);
+                else console.log("Lưu Cloud mượt mà!");
+            })
+            .catch(e => console.error("Lỗi mạng khi lưu Cloud:", e));
         }
 
         function showToast(message, type = 'success') {
@@ -687,6 +703,7 @@
                 localStorage.setItem('sys_auth', JSON.stringify(currentUser));
                 updateUIAuth(); closeLoginModal();
 
+                // Lệnh báo lên Cloud riêng lẻ cho tính năng đăng nhập
                 fetch('/api/db', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'UPDATE_LOGIN', email: email, lastLogin: timeNow, sessionToken: token })
@@ -809,6 +826,7 @@
             lucide.createIcons();
         }
 
+        // [MỚI] TÍNH NĂNG LƯU BẢN NHÁP
         function saveDraft() {
             if(!currentUser) return;
             const draft = { activeExamQs, timeRemaining: currentExamTime };
@@ -855,10 +873,11 @@
             const subjObj = schedules.find(s => s.id == currentSubjectId); const subjName = subjObj ? subjObj.name : 'Môn học';
             const titleEl = document.getElementById('examTitle'); const subtitleEl = document.getElementById('examSubtitle'); const timerContainer = document.getElementById('timerContainer');
 
+            // Hỏi ý kiến phục hồi bản nháp
             let savedDraft = localStorage.getItem(`sys_draft_${currentUser.email}_${currentSubjectId}_${mode}`);
             let useDraft = false;
             if (savedDraft) {
-                if(confirm("Hệ thống phát hiện bạn có một bài đang làm dở chưa nộp. Bạn có muốn tiếp tục làm không?")) { useDraft = true; } 
+                if(confirm("Hệ thống phát hiện bạn có một bài làm dở chưa nộp. Bạn có muốn tiếp tục làm không?")) { useDraft = true; } 
                 else { localStorage.removeItem(`sys_draft_${currentUser.email}_${currentSubjectId}_${mode}`); }
             }
 
@@ -924,6 +943,7 @@
                     </div>`;
             });
 
+            // Bôi màu lại câu đã chọn nếu là bản nháp
             activeExamQs.forEach((q, i) => {
                 if(q.selected !== undefined) {
                     for(let oi = 0; oi < q.opts.length; oi++) {
